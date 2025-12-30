@@ -4,5 +4,9 @@
 .env
 __pycache__/
 *.pyc
+data/exports/*.json
+data/generated/*.json
+inbox/*.txt
+inbox/ocr_tests/*
 
 
