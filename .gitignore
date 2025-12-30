@@ -8,5 +8,8 @@ data/exports/*.json
 data/generated/*.json
 inbox/*.txt
 inbox/ocr_tests/*
+!inbox/ocr_tests/.gitkeep
+inbox/live/*
+!inbox/live/.gitkeep
 
 
