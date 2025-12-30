@@ -1,0 +1,22 @@
+{
+  "host": "127.0.0.1",
+  "port": 8000,
+  "debug": true,
+  "cors_origins": ["*"],
+  "max_file_size_mb": 50,
+  "processors": {
+    "pdf": {
+      "extract_tables": true,
+      "extract_text": true
+    },
+    "image": {
+      "ocr_language": "eng",
+      "ocr_enabled": true
+    },
+    "excel": {
+      "default_sheet": 0,
+      "infer_types": true
+    }
+  }
+}
+

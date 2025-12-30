@@ -1,0 +1,177 @@
+# Shortcut Bridge - Cursor Rules
+
+## Project Context
+This is a **local HTTP server** that bridges the filesystem with Shortcut AI (tryshortcut.ai), a web-based Excel assistant. Shortcut AI's TypeScript runtime can `fetch()` from localhost, enabling:
+- Import: Local files → Shortcut AI → Excel spreadsheet
+- Export: Spreadsheet data → POST to local server → saved files
+- Processing: Drop PDF/Excel/images in `/inbox/` → Flask processes → JSON output
+
+## Architecture
+```
+Cursor Agent          →  Flask Server  →  Shortcut AI
+(builds data layer)      (serves HTTP)    (fetches & populates Excel)
+```
+
+## Development Guidelines
+
+### Adding New Data Sources
+1. Static files go in `/data/samples/`
+2. Script outputs go to `/data/generated/`
+3. New file processors go in `/processors/` with pattern: `process_{type}(input, output_dir) → filename`
+
+### Adding New Endpoints
+1. Simple endpoints: Add route directly to `server.py`
+2. Complex endpoints: Create module in `/api/`, import in `server.py`
+3. Always return JSON with `{"status": "ok"|"error", ...}`
+
+### Testing Changes
+1. Always restart server after code changes
+2. Verify with: `curl http://127.0.0.1:8000/api/status`
+3. Check that new files appear in `/api/status` response
+
+### File Processing Workflow
+1. User drops file in `/inbox/`
+2. POST to `/api/process` with `{"file": "filename.ext"}`
+3. Processor writes output to `/data/generated/`
+4. Shortcut AI fetches from `/data/generated/{output}`
+
+## Constraints
+- **Bind to 127.0.0.1 only** - never expose to network
+- **No PII in sample data** - use synthetic/anonymized data
+- **Max file size: 50MB** - keep payloads reasonable for fetch()
+- **JSON preferred** - Shortcut AI parses JSON natively; CSV requires manual parsing
+
+## Code Style
+- Python 3.8+ with type hints
+- Use `pathlib.Path` for file operations
+- Wrap processor logic in try/except, return meaningful errors
+- Keep `server.py` as the single entry point
+
+## When Server Is Running
+- Don't modify `server.py` without warning user to restart
+- Test endpoint changes immediately after making them
+- Keep server running unless user requests shutdown
+
+## Collaboration Model
+- **Cursor**: Creates files, builds endpoints, writes processors
+- **User**: Starts server, tests from Shortcut AI, reports results
+- **Shortcut AI**: Fetches data, populates Excel, sends exports via POST
+
+## Tested Capabilities
+
+**Integration testing completed:** 2025-12-30 (all 10 tests passing)
+
+| Capability | Status | Details |
+|------------|--------|---------|
+| **Bidirectional communication** | ✅ Proven | Shortcut can read from and write to localhost |
+| **Large payloads** | ✅ Proven | 5,000 rows × 5 columns (25,000 cells) processed in 8ms |
+| **Timeout threshold** | ✅ Proven | No timeout up to 30+ seconds (tested: 5s, 15s, 30s) |
+| **Query parameters** | ✅ Proven | GET with `?filter=x&limit=n` works correctly |
+| **Error handling** | ✅ Proven | HTTP 500 errors caught and handled gracefully |
+| **File upload** | ⚠️ Workaround | FormData fails (CORS/security), use `/api/upload-base64` instead |
+| **Dynamic data generation** | ✅ Proven | `/api/generate` creates data without pre-existing files |
+| **Pandas pipeline** | ✅ Proven | Full round-trip: Excel → Python → aggregations → Excel |
+
+**Known Limitations:**
+- FormData multipart uploads fail from browser JS → use base64 encoding via `/api/upload-base64`
+- See `docs/integration_testing.md` for detailed test results and technical proofs
+
+## Agent Learning System Protocol
+
+This system enables agents to automatically learn from experience, validate learnings over time, and promote high-value patterns to `.cursorrules` without human intervention.
+
+### Files
+- `.cursor-learnings.json` - Active knowledge base (max 50 entries)
+- `.cursor-learnings-archive.json` - Historical archive of promoted/decayed entries
+- `.cursor-learnings.backup.json` - Auto-generated backup before writes (not in git)
+
+### Session Start Checklist (AUTOMATED)
+1. **Health Check**: Validate `.cursor-learnings.json` schema. If corrupt, restore from `.backup.json`. If backup also invalid, initialize fresh file and alert user.
+2. **Decay Check**: Mark entries as `stale: true` if `last_validated` > 60 days ago.
+3. **Archive Decayed**: Move entries to archive if `last_validated` > 90 days ago.
+4. **Auto-Promote**: Promote any entries meeting threshold (`validations >= 3` AND `confidence >= 0.9` AND `stale: false` AND no conflicts), respecting rate limit (max 2 per session).
+5. **Reset Counters**: Set `session_stats.logs_this_session = 0` and `session_stats.promotions_this_session = 0`.
+
+### During Session - Auto-Log Triggers (MANDATORY)
+You MUST create a learning entry when:
+- **error_recovery**: You hit an error and fixed it - log the problem and solution
+- **retry_success**: Your first approach failed, second approach worked - log the winner
+- **user_correction**: User said "no, do X instead" - log their preference
+- **time_sink**: You spent >5 tool calls debugging one issue - log the root cause
+- **pattern_discovery**: You found a reusable pattern - log it for future use
+
+**Entry Requirements** (Quality Gate):
+- Must include: `problem` (what went wrong/unclear), `solution` (what fixed/clarified it), `context.files` (relevant file paths)
+- Must set: `category` (processors|endpoints|debugging|patterns|config), `trigger` (one of the above), `confidence` (0.0-1.0)
+- Before logging: Check for duplicate entries (same problem pattern) - if found, bump `validations` on existing entry instead
+
+**Rate Limit**: Max 5 logs per session. If limit hit, stop logging and note in session summary.
+
+### During Session - Active Retrieval (MANDATORY)
+You MUST check `.cursor-learnings.json` before:
+- Writing or modifying any processor in `/processors/` - query `category: "processors"`
+- Modifying `server.py` or any endpoint - query `category: "endpoints"`
+- Debugging an error - query `context.error_type: {error_type}`
+
+When you successfully use a learning:
+- Increment its `validations` count
+- Update `last_validated` to current timestamp
+
+### Session End Checklist (AUTOMATED)
+1. **Consolidation**: Merge entries with identical `problem` patterns (keep highest validation count).
+2. **Enforce Entry Limit**: If > 50 active entries, archive lowest-validation entries to `.cursor-learnings-archive.json`.
+3. **Generate Summary**: Report "Logged N learnings, promoted M to .cursorrules, archived K entries" at session end.
+
+### Promotion Process (FULLY AUTOMATIC)
+When an entry meets all criteria:
+- `validations >= 3`
+- `confidence >= 0.9`
+- `stale: false`
+- No contradicting learning exists
+- Rate limit not exceeded (max 2 promotions/session)
+
+Then:
+1. Draft `proposed_rule` - exact markdown text to append to `.cursorrules`
+2. Append `proposed_rule` to `.cursorrules` under appropriate section
+3. Move entry to archive with `promoted: true` flag
+4. Increment `session_stats.promotions_this_session`
+
+### Guardrails
+- **Entry Limit**: Max 50 active learnings (overflow archived)
+- **Rate Limits**: Max 5 logs/session, max 2 promotions/session
+- **Quality Gate**: Reject entries missing required fields
+- **Duplicate Detection**: Check before logging, merge instead of duplicate
+- **Schema Validation**: Validate JSON on every read/write
+- **Auto-Backup**: Copy to `.backup.json` before every write
+- **Conflict Block**: No auto-promotion if contradicting learning exists
+- **Decay Policy**: Stale at 60 days, archived at 90 days
+
+### Recovery Procedures
+- **JSON parse error**: Restore from `.backup.json`; if that fails, init fresh + alert user
+- **Missing required field**: Skip that entry, log warning, continue
+- **Conflicting learnings**: Flag both, do not promote either, note in session summary
+- **Rate limit hit**: Stop logging/promoting, note in summary, proceed with session
+
+### Learning Entry Schema
+```json
+{
+  "id": "L001",
+  "created": "ISO8601",
+  "last_validated": "ISO8601",
+  "validations": 1,
+  "category": "processors|endpoints|debugging|patterns|config",
+  "trigger": "error_recovery|retry_success|user_correction|time_sink|pattern_discovery",
+  "context": {
+    "files": ["path/to/file.py"],
+    "error_type": "UnicodeDecodeError",
+    "endpoint": "/api/process"
+  },
+  "problem": "Required - what went wrong or what was unclear",
+  "solution": "Required - what fixed it or clarified it",
+  "confidence": 0.85,
+  "stale": false,
+  "promotion_candidate": false,
+  "proposed_rule": null
+}
+```
+

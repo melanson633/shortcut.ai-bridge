@@ -1,0 +1,210 @@
+═══════════════════════════════════════════════════════════════════════════════
+SHORTCUT BRIDGE - CONTEXT BLOCK FOR SHORTCUT AI
+═══════════════════════════════════════════════════════════════════════════════
+
+SERVER URL: http://127.0.0.1:8000
+
+═══════════════════════════════════════════════════════════════════════════════
+STATIC FILE ENDPOINTS
+═══════════════════════════════════════════════════════════════════════════════
+
+GET /data/samples/{filename}      → Sample datasets (CSV, JSON)
+GET /data/generated/{filename}     → Processed file outputs
+GET /data/exports/{filename}       → Data exported from Shortcut
+
+SAMPLE DATA FILES:
+• /data/samples/sales_transactions.csv    (1000 rows: date, customer, product, qty, price, region)
+• /data/samples/financial_assumptions.json (3 scenarios: base, upside, downside)
+• /data/samples/employee_metrics.json     (50 employees: dept, salary, performance)
+• /data/samples/time_series_data.csv      (365 days: metric_a, metric_b, metric_c)
+
+═══════════════════════════════════════════════════════════════════════════════
+DYNAMIC API ENDPOINTS
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GET  /                    → Server info and available endpoints            │
+│ GET  /api/status          → Server status and file listing                 │
+│ GET  /api/data            → Query sample data (filter, limit)               │
+│ GET  /api/error           → Error handling test (returns 500)               │
+│ GET  /api/slow?seconds=N  → Timeout testing (simulates slow operations)    │
+│ POST /api/echo            → Echo back JSON payload                          │
+│ POST /api/export          → Send data from Shortcut to local machine       │
+│ POST /api/process         → Process a file from /inbox/                    │
+│ POST /api/upload          → Upload file via FormData (multipart)            │
+│ POST /api/upload-base64   → Upload file via base64 (RECOMMENDED)            │
+│ POST /api/generate        → Generate data dynamically (no file needed)      │
+│ POST /api/analyze         → Full pandas pipeline: process data, return     │
+│ POST /api/bulk            → Handle large payloads (validates counts)        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+TYPESCRIPT FETCH EXAMPLES
+═══════════════════════════════════════════════════════════════════════════════
+
+// ───────────────────────────────────────────────────────────────────────────
+// STATIC FILES
+// ───────────────────────────────────────────────────────────────────────────
+
+// Fetch CSV
+const csv = await (await fetch("http://127.0.0.1:8000/data/samples/sales_transactions.csv")).text();
+
+// Fetch JSON
+const json = await (await fetch("http://127.0.0.1:8000/data/samples/financial_assumptions.json")).json();
+
+// ───────────────────────────────────────────────────────────────────────────
+// GET ENDPOINTS
+// ───────────────────────────────────────────────────────────────────────────
+
+// Check server status and available files
+const status = await (await fetch("http://127.0.0.1:8000/api/status")).json();
+
+// Query data with filters and limits
+const filtered = await (await fetch("http://127.0.0.1:8000/api/data?filter=North&limit=50")).json();
+
+// Test error handling (returns 500)
+try {
+  const error = await fetch("http://127.0.0.1:8000/api/error");
+  // Handle error response
+} catch (e) {
+  // Network error
+}
+
+// Test timeout threshold (wait 5 seconds)
+const slow = await (await fetch("http://127.0.0.1:8000/api/slow?seconds=5")).json();
+
+// ───────────────────────────────────────────────────────────────────────────
+// POST ENDPOINTS
+// ───────────────────────────────────────────────────────────────────────────
+
+// Echo test - send JSON, get it back
+const echo = await (await fetch("http://127.0.0.1:8000/api/echo", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({test: "hello", numbers: [1, 2, 3]})
+})).json();
+
+// Export data from Shortcut to local machine
+await fetch("http://127.0.0.1:8000/api/export", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({
+    name: "my_export",
+    data: [{date: "2025-01-01", revenue: 1000}, {date: "2025-01-02", revenue: 1500}],
+    format: "json"  // or "csv"
+  })
+});
+
+// Process a file from inbox (PDF, Excel, Image)
+const processResult = await (await fetch("http://127.0.0.1:8000/api/process", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({file: "report.pdf", output_format: "json"})
+})).json();
+// Then fetch result: GET /data/generated/report_ocr.json
+
+// Upload file via base64 (RECOMMENDED - FormData has CORS issues)
+const content = "Hello from Shortcut AI!";
+const base64Content = btoa(content);
+await fetch("http://127.0.0.1:8000/api/upload-base64", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({
+    filename: "shortcut_upload.txt",
+    content_base64: base64Content
+  })
+});
+
+// Generate data dynamically (no file needed)
+const generated = await (await fetch("http://127.0.0.1:8000/api/generate", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({
+    operation: "generate_report",
+    params: {
+      rows: 100,
+      columns: ["id", "date", "value", "category", "quantity", "revenue"]
+    }
+  })
+})).json();
+
+// Full pandas pipeline - send data, get aggregations
+const analysis = await (await fetch("http://127.0.0.1:8000/api/analyze", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({
+    data: [
+      {id: 1, date: "2025-01-01", product: "Widget A", region: "North", quantity: 10, revenue: 1000},
+      {id: 2, date: "2025-01-02", product: "Widget B", region: "South", quantity: 20, revenue: 2000}
+    ],
+    aggregations: ["sum", "mean", "count", "by_region", "by_product"]
+  })
+})).json();
+
+// Handle large payloads (5000+ rows)
+const bulkResult = await (await fetch("http://127.0.0.1:8000/api/bulk", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({
+    data: largeArray,  // 5000+ rows
+    validate: true
+  })
+})).json();
+// Returns: {row_count, column_count, cell_count, processing_time_seconds}
+
+═══════════════════════════════════════════════════════════════════════════════
+TESTED LIMITS & WORKAROUNDS
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ PROVEN CAPABILITIES:
+• Large payloads: 5,000 rows × 5 columns (25,000 cells) processed in 8ms
+• Timeout threshold: No timeout up to 30+ seconds (tested: 5s, 15s, 30s)
+• Bidirectional: Read from and write to localhost works perfectly
+• Query parameters: Filtering and pagination via URL params works
+• Error handling: HTTP 500 errors caught and handled gracefully
+
+⚠️ KNOWN LIMITATIONS:
+• FormData multipart uploads fail from browser JS (CORS/security issue)
+  → WORKAROUND: Use /api/upload-base64 with btoa() encoding instead
+
+═══════════════════════════════════════════════════════════════════════════════
+FILE PROCESSING WORKFLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Upload file to inbox (use /api/upload-base64):
+   await fetch("http://127.0.0.1:8000/api/upload-base64", {
+     method: "POST",
+     headers: {"Content-Type": "application/json"},
+     body: JSON.stringify({filename: "report.pdf", content_base64: base64Content})
+   });
+
+2. Process the file:
+   await fetch("http://127.0.0.1:8000/api/process", {
+     method: "POST",
+     headers: {"Content-Type": "application/json"},
+     body: JSON.stringify({file: "report.pdf", output_format: "json"})
+   });
+
+3. Fetch processed result:
+   const result = await (await fetch("http://127.0.0.1:8000/data/generated/report_ocr.json")).json();
+
+═══════════════════════════════════════════════════════════════════════════════
+
+OCR NOTES (Dec 30, 2025)
+- /api/process defaults to Mistral OCR for PDFs/images.
+- To force local processing: {"use_ai": false, "ocr_mode": "force_local"}
+- Test drop zone: inbox/ocr_tests/
+- Live drop zone: inbox/live/
+- Reference: docs/mistral/OCR_USAGE.md
+
+OCR QUICKSTART
+1) Drop PDF into inbox/ocr_tests/ or inbox/live/
+2) POST /api/process with {"file": "ocr_tests/your.pdf"}
+   Defaults: use_ai=true, ocr_mode=force_ai
+3) Fetch result from /data/generated/your_ocr.json
+
+Force local processing:
+POST /api/process
+{"file": "ocr_tests/your.pdf", "use_ai": false, "ocr_mode": "force_local"}
+
+More: docs/mistral/OCR_USAGE.md

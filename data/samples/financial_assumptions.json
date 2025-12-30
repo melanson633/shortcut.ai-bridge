@@ -1,0 +1,36 @@
+{
+  "model_name": "FY2025 Financial Model",
+  "created_date": "2025-12-30",
+  "scenarios": [
+    {
+      "name": "Base Case",
+      "revenue_growth_pct": 0.08,
+      "cogs_pct": 0.45,
+      "opex_growth_pct": 0.05,
+      "tax_rate": 0.21,
+      "discount_rate": 0.1
+    },
+    {
+      "name": "Upside Case",
+      "revenue_growth_pct": 0.15,
+      "cogs_pct": 0.42,
+      "opex_growth_pct": 0.06,
+      "tax_rate": 0.21,
+      "discount_rate": 0.1
+    },
+    {
+      "name": "Downside Case",
+      "revenue_growth_pct": 0.02,
+      "cogs_pct": 0.5,
+      "opex_growth_pct": 0.03,
+      "tax_rate": 0.21,
+      "discount_rate": 0.12
+    }
+  ],
+  "base_metrics": {
+    "revenue_fy2024": 10000000,
+    "cogs_fy2024": 4500000,
+    "opex_fy2024": 3000000,
+    "shares_outstanding": 1000000
+  }
+}

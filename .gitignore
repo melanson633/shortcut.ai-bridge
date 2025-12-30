@@ -1,0 +1,8 @@
+.cursor-learnings.backup.json
+.cursor-learnings-archive.json
+.cursor-learnings.json
+.env
+__pycache__/
+*.pyc
+
+
