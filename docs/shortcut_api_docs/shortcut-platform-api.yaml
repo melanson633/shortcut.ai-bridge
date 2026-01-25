@@ -1,0 +1,847 @@
+openapi: 3.0.3
+info:
+  title: Shortcut Platform API
+  version: 1.0.0
+  description: >
+    API for spreadsheet automation and processing.
+
+
+    ## Getting Started
+
+
+    ### Get Your API Key
+
+
+    1. Go to [shortcut.ai](https://shortcut.ai)
+
+    2. Navigate to **Settings → API Keys**
+
+    3. Create a new API key
+
+
+    ### Basic Workflow
+
+
+    All requests require your API key in the `Authorization` header as a Bearer
+    token:
+
+    `Authorization: Bearer sc-xxx`
+
+
+    1. **Verify your API key**: `GET /api/spreadsheets/verify`
+
+    2. **Submit a job**: `POST /api/spreadsheets` with a prompt
+
+    3. **Check status**: `GET /api/spreadsheets/:runId` (poll until completed,
+    failed, or error)
+
+    4. **Download result**: `GET /api/spreadsheets/:runId/download`
+
+
+    ### Rate Limits
+
+
+    - Maximum 5 concurrent jobs per API key
+
+    - Job timeout: 20 minutes (configurable up to 25 minutes)
+
+
+
+    ## Python Examples
+
+
+    ### Installation
+
+
+    ```bash
+
+    pip install requests
+
+    ```
+
+
+    ### Basic Example
+
+
+    ```python
+
+    import requests
+
+    import time
+
+
+    API_KEY = "your_api_key_here"
+
+    BASE_URL = "https://api.shortcut.ai"
+
+
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+
+    # 1. Verify API key
+
+    response = requests.get(f"{BASE_URL}/api/spreadsheets/verify",
+    headers=headers)
+
+    print(f"API Key valid: {response.json()}")
+
+
+    # 2. Submit a job
+
+    data = {
+        "prompt": "Create a sales report with Q1 data",
+        "timeoutMinutes": 20
+    }
+
+    response = requests.post(f"{BASE_URL}/api/spreadsheets", headers=headers,
+    json=data)
+
+    run_id = response.json()["runId"]
+
+    print(f"Job submitted: {run_id}")
+
+
+    # 3. Poll for completion
+
+    while True:
+        response = requests.get(f"{BASE_URL}/api/spreadsheets/{run_id}", headers=headers)
+        status = response.json()
+        print(f"Status: {status['status']}")
+
+        if status["status"] in ["completed", "failed", "error"]:
+            break
+
+        time.sleep(5)  # Wait 5 seconds before next check
+
+    # 4. Download result (if completed) or show error
+
+    if status["status"] == "completed":
+        response = requests.get(f"{BASE_URL}/api/spreadsheets/{run_id}/download", headers=headers)
+        with open("result.xlsx", "wb") as f:
+            f.write(response.content)
+        print("Downloaded result.xlsx")
+    elif status["status"] in ["failed", "error"]:
+        print(f"Job failed: {status.get('error', 'Unknown error')}")
+    ```
+
+
+    ### Working with Files
+
+
+    ```python
+
+    import requests
+
+    import time
+
+
+    API_KEY = "your_api_key_here"
+
+    BASE_URL = "https://api.shortcut.ai"
+
+
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+
+    # 1. Upload a file
+
+    files = {"file": open("input.xlsx", "rb")}
+
+    response = requests.post(
+        f"{BASE_URL}/api/spreadsheets/upload",
+        headers={"Authorization": f"Bearer {API_KEY}"},
+        files=files
+    )
+
+    file_id = response.json()["fileId"]
+
+    print(f"File uploaded: {file_id}")
+
+
+    # 2. Submit a job with the file
+
+    data = {
+        "prompt": "Add a summary sheet with totals",
+        "initFile": file_id
+        # "contextFiles": ["id1", "id2"]  # Optional: additional files for context
+    }
+
+    response = requests.post(f"{BASE_URL}/api/spreadsheets", headers=headers,
+    json=data)
+
+    run_id = response.json()["runId"]
+
+    print(f"Job submitted: {run_id}")
+
+
+    # 3. Poll for completion
+
+    while True:
+        response = requests.get(f"{BASE_URL}/api/spreadsheets/{run_id}", headers=headers)
+        status = response.json()
+        print(f"Status: {status['status']}")
+
+        if status["status"] in ["completed", "failed", "error"]:
+            break
+
+        time.sleep(5)
+
+    # 4. Download result or show error
+
+    if status["status"] == "completed":
+        response = requests.get(f"{BASE_URL}/api/spreadsheets/{run_id}/download", headers=headers)
+        with open("result.xlsx", "wb") as f:
+            f.write(response.content)
+        print("Downloaded result.xlsx")
+    elif status["status"] in ["failed", "error"]:
+        print(f"Job failed: {status.get('error', 'Unknown error')}")
+    ```
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: "API key in Bearer token format: `Authorization: Bearer sc-xxx`"
+  schemas: {}
+paths:
+  /api/spreadsheets:
+    post:
+      summary: Submit Spreadsheet Processing Job
+      tags:
+        - Spreadsheets
+      description: Submit a natural language prompt to process a spreadsheet.
+        Optionally provide an initial Excel file and context files.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prompt:
+                  type: string
+                  description: Natural language task description
+                initFile:
+                  type: string
+                  format: uuid
+                  description: Optional File ID for initial Excel file
+                contextFiles:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 5
+                  description: Optional File IDs for additional context files
+                timeoutMs:
+                  type: number
+                  exclusiveMinimum: 0
+                  maximum: 1500000
+                  description: "Optional timeout in milliseconds (default: 20 minutes, max: 25
+                    minutes)"
+              required:
+                - prompt
+              additionalProperties: false
+        required: true
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                    description: "Unique run identifier (format: sessionId:queryId)"
+                  status:
+                    type: string
+                    description: Initial job status
+                    enum:
+                      - running
+                required:
+                  - runId
+                  - status
+                additionalProperties: false
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "402":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "429":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "500":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+  /api/spreadsheets/verify:
+    get:
+      summary: Verify API Key
+      tags:
+        - Authentication
+      description: Verifies that your API key is valid and returns information about
+        the authenticated user
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Request success status
+                    enum:
+                      - true
+                  message:
+                    type: string
+                    description: Success message
+                required:
+                  - success
+                  - message
+                additionalProperties: false
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Request success status
+                    enum:
+                      - false
+                  error:
+                    type: string
+                    description: Error type
+                  message:
+                    type: string
+                    description: Error message
+                required:
+                  - success
+                  - error
+                additionalProperties: false
+        "500":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Request success status
+                    enum:
+                      - false
+                  error:
+                    type: string
+                    description: Error type
+                required:
+                  - success
+                  - error
+                additionalProperties: false
+  /api/spreadsheets/upload:
+    post:
+      summary: Upload File
+      tags:
+        - Spreadsheets
+      description: Upload a file to use in spreadsheet jobs. Returns a file ID.
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Upload success status
+                    enum:
+                      - true
+                  fileId:
+                    type: string
+                    format: uuid
+                    description: File ID to use in job submission
+                required:
+                  - success
+                  - fileId
+                additionalProperties: false
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Request success status
+                    enum:
+                      - false
+                  error:
+                    type: string
+                    description: Error type
+                  message:
+                    type: string
+                    description: Error message
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Request success status
+                    enum:
+                      - false
+                  error:
+                    type: string
+                    description: Error type
+                  message:
+                    type: string
+                    description: Error message
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "413":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Request success status
+                    enum:
+                      - false
+                  error:
+                    type: string
+                    description: Error type
+                  message:
+                    type: string
+                    description: Error message
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "500":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Request success status
+                    enum:
+                      - false
+                  error:
+                    type: string
+                    description: Error type
+                  message:
+                    type: string
+                    description: Error message
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+  /api/spreadsheets/{runId}:
+    get:
+      summary: Get Spreadsheet Job Status
+      tags:
+        - Spreadsheets
+      description: Check the status of a spreadsheet processing job. Returns running,
+        completed, failed, or error status.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: runId
+          required: true
+          description: Unique run identifier
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      runId:
+                        type: string
+                        description: Unique run identifier
+                      status:
+                        type: string
+                        description: Job is still running
+                        enum:
+                          - running
+                    required:
+                      - runId
+                      - status
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      runId:
+                        type: string
+                        description: Unique run identifier
+                      status:
+                        type: string
+                        description: Job completed successfully
+                        enum:
+                          - completed
+                      downloadUrl:
+                        type: string
+                        description: URL to download the result file
+                    required:
+                      - runId
+                      - status
+                      - downloadUrl
+                    additionalProperties: false
+                  - type: object
+                    properties:
+                      runId:
+                        type: string
+                        description: Unique run identifier
+                      status:
+                        type: string
+                        enum:
+                          - failed
+                          - error
+                        description: Job failed or encountered an error
+                      error:
+                        type: string
+                        description: Error message
+                    required:
+                      - runId
+                      - status
+                      - error
+                    additionalProperties: false
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "500":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+  /api/spreadsheets/{runId}/download:
+    get:
+      summary: Download Spreadsheet Result
+      tags:
+        - Spreadsheets
+      description: Download the processed Excel file for a completed job
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: runId
+          required: true
+          description: Unique run identifier
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Binary Excel file
+          content:
+            application/json:
+              schema:
+                description: Binary Excel file
+                type: string
+                format: binary
+                contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+        "500":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - success
+                  - error
+                  - message
+                additionalProperties: false
+tags:
+  - name: Spreadsheets
+    description: Spreadsheet processing and automation endpoints
+  - name: Authentication
+    description: API key authentication and verification
